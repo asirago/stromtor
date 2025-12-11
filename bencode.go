@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"strconv"
 )
 
 func BDecode(r io.Reader) (interface{}, error) {
@@ -22,6 +23,7 @@ func BDecode(r io.Reader) (interface{}, error) {
 	case ch == 'l':
 		return decodeList(br)
 	case ch >= '0' && ch <= '9':
+		br.UnreadByte()
 		return decodeString(br)
 	default:
 		return nil, fmt.Errorf("invalid bencode type: %c", ch)
@@ -49,7 +51,32 @@ func decodeInt(br *bufio.Reader) (int64, error) {
 }
 
 func decodeString(br *bufio.Reader) (string, error) {
-	return "", nil
+	var lengthBuffer []byte
+	for {
+		ch, err := br.ReadByte()
+		if err != nil {
+			return "", err
+		}
+
+		if ch == ':' {
+			break
+		}
+
+		lengthBuffer = append(lengthBuffer, ch)
+	}
+
+	length, err := strconv.ParseInt(string(lengthBuffer), 10, 64)
+	if err != nil {
+		return "", err
+	}
+
+	buf := make([]byte, length)
+	_, err = io.ReadFull(br, buf)
+	if err != nil {
+		return "", err
+	}
+
+	return string(buf), nil
 }
 
 func decodeDict(br *bufio.Reader) (map[string]interface{}, error) {
