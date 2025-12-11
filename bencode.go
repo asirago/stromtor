@@ -29,7 +29,23 @@ func BDecode(r io.Reader) (interface{}, error) {
 }
 
 func decodeInt(br *bufio.Reader) (int64, error) {
-	return 0, nil
+	var intBuffer []byte
+	for {
+		ch, err := br.ReadByte()
+		if err != nil {
+			return 0, err
+		}
+
+		if ch == 'e' {
+			i, err := strconv.ParseInt(string(intBuffer), 10, 64)
+			if err != nil {
+				panic(err)
+			}
+			return i, nil
+		}
+
+		intBuffer = append(intBuffer, ch)
+	}
 }
 
 func decodeString(br *bufio.Reader) (string, error) {
