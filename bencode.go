@@ -80,7 +80,36 @@ func decodeString(br *bufio.Reader) (string, error) {
 }
 
 func decodeDict(br *bufio.Reader) (map[string]interface{}, error) {
-	return nil, nil
+
+	dict := map[string]interface{}{}
+	for {
+		ch, err := br.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+
+		if ch == 'e' {
+			return dict, nil
+		}
+
+		br.UnreadByte()
+		data, err := BDecode(br)
+		if err != nil {
+			return nil, err
+		}
+
+		key, ok := data.(string)
+		if !ok {
+			return nil, fmt.Errorf("dict key is not a string")
+		}
+
+		val, err := BDecode(br)
+		if err != nil {
+			return nil, err
+		}
+
+		dict[key] = val
+	}
 }
 func decodeList(br *bufio.Reader) ([]interface{}, error) {
 	var list []interface{}
