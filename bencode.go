@@ -83,5 +83,23 @@ func decodeDict(br *bufio.Reader) (map[string]interface{}, error) {
 	return nil, nil
 }
 func decodeList(br *bufio.Reader) ([]interface{}, error) {
-	return nil, nil
+	var list []interface{}
+	for {
+		ch, err := br.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+
+		if ch == 'e' {
+			return list, nil
+		}
+
+		br.UnreadByte()
+		val, err := BDecode(br)
+		if err != nil {
+			return nil, err
+		}
+
+		list = append(list, val)
+	}
 }
