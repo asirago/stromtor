@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"io"
 )
 
@@ -82,4 +84,12 @@ func parseTorrent(r io.Reader) (*Torrent, error) {
 	}
 
 	return torrent, nil
+}
+
+func (t *Torrent) calcInfoHash() string {
+	b := BEncode(t.Info)
+
+	hash := sha1.Sum(b)
+
+	return hex.EncodeToString(hash[:])
 }
