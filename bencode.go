@@ -7,7 +7,7 @@ import (
 	"strconv"
 )
 
-func BDecode(r io.Reader) (interface{}, error) {
+func BDecode(r io.Reader) (any, error) {
 	br := bufio.NewReader(r)
 
 	ch, err := br.ReadByte()
@@ -79,9 +79,9 @@ func decodeString(br *bufio.Reader) (string, error) {
 	return string(buf), nil
 }
 
-func decodeDict(br *bufio.Reader) (map[string]interface{}, error) {
+func decodeDict(br *bufio.Reader) (map[string]any, error) {
 
-	dict := map[string]interface{}{}
+	dict := map[string]any{}
 	for {
 		ch, err := br.ReadByte()
 		if err != nil {
@@ -111,8 +111,8 @@ func decodeDict(br *bufio.Reader) (map[string]interface{}, error) {
 		dict[key] = val
 	}
 }
-func decodeList(br *bufio.Reader) ([]interface{}, error) {
-	var list []interface{}
+func decodeList(br *bufio.Reader) ([]any, error) {
+	var list []any
 	for {
 		ch, err := br.ReadByte()
 		if err != nil {
