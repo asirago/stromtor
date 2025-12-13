@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/sha1"
 	"fmt"
 	"io"
@@ -115,4 +116,16 @@ func (t *Torrent) buildTrackerURL(
 	baseURL.RawQuery = params.Encode()
 
 	return baseURL.String(), nil
+}
+
+func generatePeerID(prefix string) string {
+	peerID := make([]byte, 20)
+
+	prefix = fmt.Sprintf("-%s-", prefix)
+
+	copy(peerID, prefix)
+
+	rand.Read(peerID[len(prefix):])
+
+	return string(peerID)
 }
