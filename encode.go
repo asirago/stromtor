@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"strconv"
 )
 
@@ -51,7 +50,6 @@ func encodeFileInfo(buf *bytes.Buffer, info FileInfo) {
 	}
 
 	if info.Length > 0 {
-		fmt.Println(info.Length)
 		bencode(buf, "length")
 		bencode(buf, info.Length)
 	}

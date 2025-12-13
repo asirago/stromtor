@@ -2,8 +2,10 @@ package main
 
 import (
 	"crypto/sha1"
-	"encoding/hex"
+	"fmt"
 	"io"
+	"net/url"
+	"strconv"
 )
 
 type Torrent struct {
@@ -86,10 +88,31 @@ func parseTorrent(r io.Reader) (*Torrent, error) {
 	return torrent, nil
 }
 
-func (t *Torrent) calcInfoHash() string {
+func (t *Torrent) InfoHash() []byte {
 	b := BEncode(t.Info)
-
 	hash := sha1.Sum(b)
 
-	return hex.EncodeToString(hash[:])
+	return hash[:]
+}
+
+func (t *Torrent) buildTrackerURL(
+	peerID string,
+	port int,
+	uploaded, downloaded, left int64,
+) (string, error) {
+	baseURL, err := url.Parse(t.Announce)
+	if err != nil {
+		return "", fmt.Errorf("could not parse announce url: %v", err)
+	}
+	params := url.Values{}
+	params.Set("info_hash", string(t.InfoHash()))
+	params.Set("peer_id", peerID)
+	params.Set("port", strconv.Itoa(port))
+	params.Set("uploaded", strconv.FormatInt(uploaded, 10))
+	params.Set("downloaded", strconv.FormatInt(downloaded, 10))
+	params.Set("left", strconv.FormatInt(left, 10))
+
+	baseURL.RawQuery = params.Encode()
+
+	return baseURL.String(), nil
 }
