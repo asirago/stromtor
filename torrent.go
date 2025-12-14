@@ -89,11 +89,11 @@ func parseTorrent(r io.Reader) (*Torrent, error) {
 	return torrent, nil
 }
 
-func (t *Torrent) InfoHash() []byte {
+func (t *Torrent) InfoHash() [20]byte {
 	b := BEncode(t.Info)
 	hash := sha1.Sum(b)
 
-	return hash[:]
+	return hash
 }
 
 func (t *Torrent) buildTrackerURL(
@@ -105,8 +105,9 @@ func (t *Torrent) buildTrackerURL(
 	if err != nil {
 		return "", fmt.Errorf("could not parse announce url: %v", err)
 	}
+	infoHash := t.InfoHash()
 	params := url.Values{}
-	params.Set("info_hash", string(t.InfoHash()))
+	params.Set("info_hash", string(infoHash[:]))
 	params.Set("peer_id", peerID)
 	params.Set("port", strconv.Itoa(port))
 	params.Set("uploaded", strconv.FormatInt(uploaded, 10))
@@ -118,14 +119,14 @@ func (t *Torrent) buildTrackerURL(
 	return baseURL.String(), nil
 }
 
-func generatePeerID(prefix string) string {
-	peerID := make([]byte, 20)
+func generatePeerID(prefix string) [20]byte {
+	peerID := [20]byte{}
 
 	prefix = fmt.Sprintf("-%s-", prefix)
 
-	copy(peerID, prefix)
+	copy(peerID[:], prefix)
 
 	rand.Read(peerID[len(prefix):])
 
-	return string(peerID)
+	return peerID
 }
