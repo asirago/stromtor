@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"net"
+	"strconv"
 )
 
 type Peer struct {
@@ -19,7 +20,9 @@ func parsePeers(peers any) []Peer {
 		peerData := peer.(map[string]any)
 
 		var peerID [20]byte
-		copy(peerID[:], peerData["peer id"].(string))
+		if id, ok := peerData["peer id"].(string); ok {
+			copy(peerID[:], id)
+		}
 
 		listPeers = append(listPeers, Peer{
 			IP:     net.ParseIP(peerData["ip"].(string)),
@@ -39,11 +42,14 @@ func parseCompactPeers(peers string) []Peer {
 	for i := range numPeers {
 		offset := i * peerSize
 		peerBytes := peers[offset : offset+peerSize]
-		peer := Peer{
+		listPeers[i] = Peer{
 			IP:   net.IPv4(peerBytes[0], peerBytes[1], peerBytes[2], peerBytes[3]),
 			Port: binary.BigEndian.Uint16([]byte(peerBytes[4:6])),
 		}
-		listPeers = append(listPeers, peer)
 	}
 	return listPeers
+}
+
+func (p Peer) Addr() string {
+	return net.JoinHostPort(p.IP.String(), strconv.Itoa(int(p.Port)))
 }
