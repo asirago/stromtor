@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"net"
 	"strconv"
 )
@@ -12,21 +13,42 @@ type Peer struct {
 	PeerID [20]byte
 }
 
-func parsePeers(peers any) []Peer {
-	peerList := peers.([]any)
+func parsePeers(peersResp map[string]any) ([]Peer, error) {
+	if peers, ok := peersResp["peers"].(string); ok {
+		return parseCompactPeers(peers), nil
+	}
+
+	if peers, ok := peersResp["peers"].([]any); ok {
+		return parseNonCompactPeers(peers), nil
+	}
+
+	return nil, fmt.Errorf("no peers in tracker response")
+}
+
+func parseNonCompactPeers(peers []any) []Peer {
 	var listPeers []Peer
 
-	for _, peer := range peerList {
+	for _, peer := range peers {
 		peerData := peer.(map[string]any)
 
 		var peerID [20]byte
 		if id, ok := peerData["peer id"].(string); ok {
 			copy(peerID[:], id)
 		}
+		ip, ok := peerData["ip"].(string)
+		if !ok {
+			continue
+		}
+		parsedIP := net.ParseIP(ip)
+
+		port, ok := peerData["port"].(int64)
+		if !ok || port < 0 || port > 65535 {
+			continue
+		}
 
 		listPeers = append(listPeers, Peer{
-			IP:     net.ParseIP(peerData["ip"].(string)),
-			Port:   uint16(peerData["port"].(int64)),
+			IP:     parsedIP,
+			Port:   uint16(port),
 			PeerID: peerID,
 		})
 	}
