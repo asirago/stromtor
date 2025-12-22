@@ -5,13 +5,15 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"strconv"
 )
 
 type Torrent struct {
-	Announce string
-	Info     FileInfo
+	Announce     string
+	AnnounceList []string
+	Info         FileInfo
 }
 
 type FileInfo struct {
@@ -40,6 +42,25 @@ func extractPieceHashes(pieces string) [][20]byte {
 	return result
 }
 
+func extractAnnounceURLs(announceListRaw []any) []string {
+	var announceList []string
+
+	for _, trackerList := range announceListRaw {
+		trackerListSlice, ok := trackerList.([]any)
+		if !ok {
+			continue
+		}
+
+		for _, tracker := range trackerListSlice {
+			if str, ok := tracker.(string); ok {
+				announceList = append(announceList, str)
+			}
+		}
+	}
+
+	return announceList
+}
+
 func parseTorrent(r io.Reader) (*Torrent, error) {
 	res, err := BDecode(r)
 	if err != nil {
@@ -56,6 +77,9 @@ func parseTorrent(r io.Reader) (*Torrent, error) {
 			PieceLength: tInfo["piece length"].(int64),
 			Pieces:      extractPieceHashes(tInfo["pieces"].(string)),
 		},
+	}
+	if announceList, ok := tRes["announce-list"].([]any); ok {
+		torrent.AnnounceList = extractAnnounceURLs(announceList)
 	}
 
 	if length, ok := tInfo["length"].(int64); ok {
@@ -97,26 +121,31 @@ func (t *Torrent) InfoHash() [20]byte {
 }
 
 func (t *Torrent) buildTrackerURL(
-	peerID string,
+	announceUrl string,
+	peerID [20]byte,
 	port int,
-	uploaded, downloaded, left int64,
 ) (string, error) {
-	baseURL, err := url.Parse(t.Announce)
+	baseURL, err := url.Parse(announceUrl)
 	if err != nil {
 		return "", fmt.Errorf("could not parse announce url: %v", err)
 	}
 	infoHash := t.InfoHash()
 	params := url.Values{}
 	params.Set("info_hash", string(infoHash[:]))
-	params.Set("peer_id", peerID)
+	params.Set("peer_id", string(peerID[:]))
 	params.Set("port", strconv.Itoa(port))
-	params.Set("uploaded", strconv.FormatInt(uploaded, 10))
-	params.Set("downloaded", strconv.FormatInt(downloaded, 10))
-	params.Set("left", strconv.FormatInt(left, 10))
+	params.Set("uploaded", "0")
+	params.Set("downloaded", "0")
+	params.Set("left", strconv.FormatInt(t.Info.Length, 10))
+	// params.Set("compact", "1")
 
 	baseURL.RawQuery = params.Encode()
 
 	return baseURL.String(), nil
+}
+
+func (t *Torrent) NumPieces() int {
+	return len(t.Info.Pieces) / 20
 }
 
 func generatePeerID(prefix string) [20]byte {
@@ -129,4 +158,54 @@ func generatePeerID(prefix string) [20]byte {
 	rand.Read(peerID[len(prefix):])
 
 	return peerID
+}
+
+func (t *Torrent) announceTracker(announceUrl string, peerID [20]byte, port int) ([]Peer, error) {
+	trackerURL, err := t.buildTrackerURL(announceUrl, peerID, port)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.Get(trackerURL)
+	if err != nil {
+		return nil, fmt.Errorf("tracker request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	trackerResp, err := BDecode(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode tracker response")
+	}
+
+	respMap, ok := trackerResp.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("invalid tracker response format")
+	}
+
+	if failureReason, ok := respMap["failure reason"].(string); ok {
+		return nil, fmt.Errorf("tracker error: %s", failureReason)
+	}
+
+	return parsePeers(respMap, announceUrl)
+}
+
+func (t *Torrent) getPeers(peerID [20]byte, port int) ([]Peer, error) {
+	var allPeers []Peer
+
+	if t.Announce != "" {
+		peers, err := t.announceTracker(t.Announce, peerID, port)
+		if err == nil && len(peers) > 0 {
+			allPeers = append(allPeers, peers...)
+		}
+	}
+
+	for _, trackerURL := range t.AnnounceList {
+		peers, err := t.announceTracker(trackerURL, peerID, port)
+		if err == nil && len(peers) > 0 {
+			allPeers = append(allPeers, peers...)
+		}
+
+	}
+
+	return allPeers, nil
 }
