@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
+	"time"
 )
 
 type Handshake struct {
@@ -49,6 +51,27 @@ func ReadHandshake(r io.Reader) (*Handshake, error) {
 	}, nil
 }
 
+func performHandshake(conn net.Conn, infoHash, peerID [20]byte) (*Handshake, error) {
+	conn.SetDeadline(time.Now().Add(3 * time.Second))
+	defer conn.SetDeadline(time.Time{})
+
+	reqHandshake := NewHandshake(infoHash, peerID)
+	_, err := conn.Write(reqHandshake.Serialize())
+	if err != nil {
+		return nil, err
+	}
+
+	resHandshake, err := ReadHandshake(conn)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(infoHash[:], resHandshake.InfoHash[:]) {
+		return nil, fmt.Errorf("expected info hash %x, got %x", infoHash, resHandshake.InfoHash)
+	}
+
+	return resHandshake, nil
+}
+
 func (h *Handshake) PrintHandshake() {
 	fmt.Printf("Handshake received:\n")
 	fmt.Printf("  Protocol Length: \\x%02x\n", h.Length)
@@ -57,6 +80,7 @@ func (h *Handshake) PrintHandshake() {
 	fmt.Printf("  Info Hash: %x\n", h.InfoHash)
 	fmt.Printf("  Peer ID: %s\n", h.PeerID)
 }
+
 func (h *Handshake) Serialize() []byte {
 	msg := &bytes.Buffer{}
 	msg.WriteByte(h.Length)
