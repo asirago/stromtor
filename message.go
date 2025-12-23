@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 )
@@ -26,22 +27,23 @@ type Message struct {
 	Payload []byte
 }
 
-func WriteMessage(conn net.Conn, msg *Message) error {
+func (m *Message) Serialize() []byte {
+	if m == nil {
+		return make([]byte, 4)
+	}
+
 	var buf bytes.Buffer
-
-	length := uint32(1 + len(msg.Payload))
+	length := uint32(len(m.Payload) + 1)
 	binary.Write(&buf, binary.BigEndian, length)
-	buf.WriteByte(byte(msg.ID))
-	buf.Write(msg.Payload)
+	buf.WriteByte(byte(m.ID))
+	buf.Write(m.Payload)
 
-	_, err := conn.Write(buf.Bytes())
-	return err
+	return buf.Bytes()
 }
 
 func ReadMessage(conn net.Conn) (*Message, error) {
-
 	lengthMsg := make([]byte, 4)
-	_, err := conn.Read(lengthMsg)
+	_, err := io.ReadFull(conn, lengthMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -62,4 +64,25 @@ func ReadMessage(conn net.Conn) (*Message, error) {
 		Payload: msgBuf[1:],
 	}, nil
 
+}
+
+func ParsePiece(index uint32, buf []byte, msg *Message) (int, error) {
+	parsedIndex := binary.BigEndian.Uint32(msg.Payload[0:4])
+	if parsedIndex != index {
+		return 0, fmt.Errorf("expected index %d, got %d", index, parsedIndex)
+	}
+
+	begin := int(binary.BigEndian.Uint32(msg.Payload[4:8]))
+	block := msg.Payload[8:]
+	if begin+len(block) > len(buf) {
+		return 0, fmt.Errorf(
+			"block too long %d for offset %d with length %d",
+			len(block),
+			begin,
+			len(buf),
+		)
+	}
+
+	copy(buf[begin:], block)
+	return len(block), nil
 }
