@@ -144,10 +144,6 @@ func (t *Torrent) buildTrackerURL(
 	return baseURL.String(), nil
 }
 
-func (t *Torrent) NumPieces() int {
-	return len(t.Info.Pieces) / 20
-}
-
 func generatePeerID(prefix string) [20]byte {
 	peerID := [20]byte{}
 
@@ -208,4 +204,15 @@ func (t *Torrent) getPeers(peerID [20]byte, port int) ([]Peer, error) {
 	}
 
 	return allPeers, nil
+}
+
+func (t *Torrent) getPieceSize(pieceIndex int) int64 {
+	lastPieceIndex := len(t.Info.Pieces) - 1
+	if pieceIndex == lastPieceIndex {
+		if lastSize := t.Info.Length % t.Info.PieceLength; lastSize != 0 {
+			return lastSize
+		}
+	}
+
+	return t.Info.PieceLength
 }
