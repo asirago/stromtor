@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"net"
 	"time"
 )
@@ -40,4 +41,23 @@ func NewConnection(peer Peer, infoHash, peerID [20]byte) (*Connection, error) {
 		InfoHash: infoHash,
 		PeerID:   peerID,
 	}, nil
+}
+
+func (c *Connection) SendInterested() error {
+	msg := Message{ID: MsgInterested}
+	_, err := c.Conn.Write(msg.Serialize())
+	return err
+}
+
+func (c *Connection) SendRequest(index, begin, length uint32) error {
+	msg := Message{ID: MsgRequest}
+
+	payload := make([]byte, 12)
+	binary.BigEndian.PutUint32(payload[0:4], index)
+	binary.BigEndian.PutUint32(payload[4:8], begin)
+	binary.BigEndian.PutUint32(payload[8:12], length)
+
+	msg.Payload = payload
+	_, err := c.Conn.Write(msg.Serialize())
+	return err
 }
