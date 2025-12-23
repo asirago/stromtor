@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+const (
+	MaxBlockSize = 16384
+	MaxPipeline  = 10
+)
+
 type Connection struct {
 	Conn     net.Conn
 	Peer     Peer
@@ -60,4 +65,39 @@ func (c *Connection) SendRequest(index, begin, length uint32) error {
 	msg.Payload = payload
 	_, err := c.Conn.Write(msg.Serialize())
 	return err
+}
+
+func (c *Connection) DownloadPiece(index uint32, length int64) ([]byte, error) {
+	err := c.SendInterested()
+	if err != nil {
+		return nil, err
+	}
+
+	progress := NewPieceProgress(index, length, c)
+
+	for progress.Downloaded < int(length) {
+		err = progress.readMessage()
+		if err != nil {
+			return nil, err
+		}
+
+		if c.Unchoked {
+			for progress.Requested-progress.Downloaded < MaxPipeline*MaxBlockSize && progress.Requested < int(length) {
+				blockSize := MaxBlockSize
+				remaining := int(length) - progress.Requested
+				if remaining < blockSize {
+					blockSize = remaining
+				}
+
+				err = c.SendRequest(index, uint32(progress.Requested), uint32(blockSize))
+				if err != nil {
+					return nil, err
+				}
+
+				progress.Requested += blockSize
+			}
+		}
+	}
+
+	return progress.Buf, nil
 }
