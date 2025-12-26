@@ -78,3 +78,30 @@ func (p *PeerPool) ConnectToPeers(peers []Peer) {
 
 	log.Printf("🔗 Peer pool initialized with %d connection\n", len(p.connections))
 }
+
+func (p *PeerPool) GetBestPeer(index int) *PeerConnection {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	var bestPeer *PeerConnection
+	for _, peerConn := range p.connections {
+		if peerConn.Busy {
+			continue
+		}
+
+		if !peerConn.Conn.Bitfield.HasPiece(index) {
+			continue
+		}
+
+		if bestPeer == nil || peerConn.Metrics.PiecesFailed <= bestPeer.Metrics.PiecesFailed {
+			bestPeer = peerConn
+		}
+
+	}
+
+	if bestPeer != nil {
+		bestPeer.Busy = true
+	}
+
+	return bestPeer
+}
