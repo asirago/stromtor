@@ -105,3 +105,25 @@ func (p *PeerPool) GetBestPeer(index int) *PeerConnection {
 
 	return bestPeer
 }
+
+func (p *PeerPool) removePeer(peerConn *PeerConnection) {
+	peerConn.Conn.Conn.Close()
+
+	for i, pc := range p.connections {
+		if pc == peerConn {
+			p.connections = append(p.connections[:i], p.connections[i+1:]...)
+			break
+		}
+	}
+}
+
+func (p *PeerPool) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	for _, peerConn := range p.connections {
+		peerConn.Conn.Conn.Close()
+	}
+
+	p.connections = nil
+}
