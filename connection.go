@@ -21,7 +21,7 @@ type Connection struct {
 }
 
 func NewConnection(peer Peer, infoHash, peerID [20]byte) (*Connection, error) {
-	conn, err := net.DialTimeout("tcp", peer.Addr(), 3*time.Second)
+	conn, err := net.DialTimeout("tcp", peer.Addr(), 5*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -68,6 +68,8 @@ func (c *Connection) SendRequest(index, begin, length uint32) error {
 }
 
 func (c *Connection) DownloadPiece(index uint32, length int64) ([]byte, error) {
+	c.Conn.SetDeadline(time.Now().Add(30 * time.Second))
+	defer c.Conn.SetDeadline(time.Time{})
 	err := c.SendInterested()
 	if err != nil {
 		return nil, err

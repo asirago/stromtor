@@ -52,7 +52,7 @@ func ReadHandshake(r io.Reader) (*Handshake, error) {
 }
 
 func performHandshake(conn net.Conn, infoHash, peerID [20]byte) (*Handshake, error) {
-	conn.SetDeadline(time.Now().Add(3 * time.Second))
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
 	defer conn.SetDeadline(time.Time{})
 
 	reqHandshake := NewHandshake(infoHash, peerID)

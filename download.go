@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 )
 
 const MaxRetries = 3
@@ -71,6 +72,7 @@ func (t *Torrent) Download(peer Peer, infoHash, peerID [20]byte) error {
 	if err != nil {
 		return err
 	}
+	defer c.Conn.Close()
 
 	state := NewDownloadState(t.NumPieces())
 

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"time"
 )
 
 type Bitfield []byte
@@ -30,6 +31,8 @@ func (bf *Bitfield) HasPiece(index int) bool {
 }
 
 func receiveBitfield(conn net.Conn) (Bitfield, error) {
+	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	defer conn.SetDeadline(time.Time{})
 	msg, err := ReadMessage(conn)
 	if err != nil {
 		return nil, err
