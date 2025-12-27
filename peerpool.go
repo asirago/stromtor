@@ -106,6 +106,24 @@ func (p *PeerPool) GetBestPeer(index int) *PeerConnection {
 	return bestPeer
 }
 
+func (p *PeerPool) ReleasePeer(peerConn *PeerConnection, success bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	peerConn.Busy = false
+
+	if success {
+		peerConn.Metrics.PiecesCompleted++
+	} else {
+		peerConn.Metrics.PiecesFailed++
+	}
+
+	if peerConn.Metrics.PiecesFailed > 5 {
+		log.Printf("🗑️ Dropping poor performer: %s", peerConn.Conn.Peer.Addr())
+		p.removePeer(peerConn)
+	}
+}
+
 func (p *PeerPool) removePeer(peerConn *PeerConnection) {
 	peerConn.Conn.Conn.Close()
 
