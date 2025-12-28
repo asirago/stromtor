@@ -158,3 +158,145 @@ func (t *Torrent) writePieceToFile(pieceIdx int, piece []byte) error {
 
 	return nil
 }
+
+type PieceWork struct {
+	Index  int
+	Hash   [20]byte
+	Length int
+}
+
+type PieceResult struct {
+	Index     int
+	Buf       []byte
+	StartTime time.Time
+	EndTime   time.Time
+}
+
+func (t *Torrent) DownloadConcurrent(peers []Peer, infoHash, peerID [20]byte) error {
+	pool := NewPeerPool(peers, infoHash, peerID, 50)
+	pool.ConnectToPeers(peers)
+	defer pool.Close()
+
+	retryQueue := make(chan *PieceWork, t.NumPieces())
+	workQueue := make(chan *PieceWork, t.NumPieces())
+	for pieceIdx, pieceHash := range t.Info.Pieces {
+		workQueue <- &PieceWork{
+			Index:  pieceIdx,
+			Hash:   pieceHash,
+			Length: int(t.getPieceLength(pieceIdx)),
+		}
+	}
+
+	results := make(chan *PieceResult, t.NumPieces())
+
+	numWorkers := 20
+	for i := range numWorkers {
+		go func(workerID int) {
+			log.Printf("🔧 Worker %d: started\n", workerID)
+
+			for {
+				var work *PieceWork
+				select {
+				case work = <-retryQueue:
+					log.Printf(
+						"🔄 Worker %d: retrying piece %d (HIGH PRIORITY)\n",
+						workerID,
+						work.Index,
+					)
+				default:
+					select {
+					case work = <-retryQueue:
+						log.Printf(
+							"🔄 Worker %d: retrying piece %d (HIGH PRIORITY)\n",
+							workerID,
+							work.Index,
+						)
+					case work = <-workQueue:
+					}
+				}
+
+				if work == nil {
+					break
+				}
+
+				peerConn := pool.GetBestPeer(work.Index)
+				if peerConn == nil {
+					log.Printf(
+						"⚠️ Worker %d: no peer available for piece %d, retrying\n",
+						workerID,
+						work.Index,
+					)
+
+					time.Sleep(15 * time.Second)
+					retryQueue <- work
+					continue
+				}
+
+				startTime := time.Now()
+				piece, err := peerConn.Conn.DownloadPiece(uint32(work.Index), int64(work.Length))
+				if err != nil {
+					log.Printf(
+						"❌ Worker %d: failed to download piece %d from %s: %v\n",
+						workerID,
+						work.Index,
+						peerConn.Conn.Peer.Addr(),
+						err,
+					)
+					pool.ReleasePeer(peerConn, false)
+					retryQueue <- work
+					continue
+				}
+
+				hash := sha1.Sum(piece)
+				if !bytes.Equal(hash[:], work.Hash[:]) {
+					log.Printf("❌ Worker %d: hash mismatch for piece %d\n", workerID, work.Index)
+					pool.ReleasePeer(peerConn, false)
+					retryQueue <- work
+					continue
+				}
+
+				pool.ReleasePeer(peerConn, true)
+				results <- &PieceResult{
+					Index:     work.Index,
+					Buf:       piece,
+					StartTime: startTime,
+					EndTime:   time.Now(),
+				}
+			}
+
+			log.Printf("⏹  Worker %d: shutting down\n", workerID)
+		}(i)
+	}
+
+	piecesCompleted := 0
+	for piecesCompleted < t.NumPieces() {
+		result := <-results
+		if result.Buf == nil {
+			return fmt.Errorf("failed to download piece %d", result.Index)
+		}
+
+		err := t.writePieceToFile(result.Index, result.Buf)
+		if err != nil {
+			return fmt.Errorf("failed to write piece %d: %w", result.Index, err)
+		}
+
+		elapsed := result.EndTime.Sub(result.StartTime).Seconds()
+		speedKbps := float64(len(result.Buf)) / 1024 / elapsed
+
+		piecesCompleted++
+		percent := 100 * float64(piecesCompleted) / float64(t.NumPieces())
+		log.Printf(
+			"✅ Piece %d complete (%d/%d - %.2f%%) - %.2f KiB/s\n",
+			result.Index,
+			piecesCompleted,
+			t.NumPieces(),
+			percent,
+			speedKbps,
+		)
+	}
+	close(workQueue)
+	close(retryQueue)
+	log.Println("🎉 Download complete")
+
+	return nil
+}
